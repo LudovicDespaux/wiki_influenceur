@@ -55,7 +55,7 @@ ln -sfn "$base/releases/$release" "$base/current"
 nginx -t
 systemctl reload nginx
 ready=false
-for attempt in $(seq 1 10); do
+for ((attempt=1; attempt<=10; attempt++)); do
     if curl -fsS -H 'Host: 91.134.138.53' http://127.0.0.1/wiki-influenceur/version.json | grep -Fq "$commit"; then
         ready=true
         break
