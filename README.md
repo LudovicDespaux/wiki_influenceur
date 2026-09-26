@@ -12,6 +12,10 @@ Node 24 et Git. `npm ci`, puis `npm run build` produit `dist/`, avec le SHA dans
 
 La CI GitHub lance le build, la validation Bash et ShellCheck. CodeRabbit est configuré pour des revues en français ; son application GitHub doit avoir accès à ce dépôt.
 
+## Protection de main
+
+La règle GitHub active impose une PR, la CI `verify` verte sur une branche à jour et la résolution des discussions. Suppression et force-push sont interdits, sans exemption administrateur. Fusion par squash. Aucun second approbateur humain obligatoire pour ce dépôt individuel. La revue CodeRabbit est également exigée par le processus de livraison décrit dans AGENTS.md ; son activation est à vérifier dans les applications GitHub.
+
 ## Livraison
 
 1. Créer une branche et une PR vers `main`.
