@@ -15,6 +15,7 @@ on:
         default: 'npm ci && npm run build && python3 -m unittest discover -s deploy -p "test_*.py" && bash -n deploy/deploy-vps.sh deploy/activate-release.sh && shellcheck deploy/*.sh'
 permissions:
   contents: read
+  pull-requests: read
 jobs:
   verify:
     name: verify
@@ -51,3 +52,9 @@ jobs:
     secrets:
       ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
       known-hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+  coderabbit:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/review-reusable.yml
