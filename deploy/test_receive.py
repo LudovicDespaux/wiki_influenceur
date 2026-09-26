@@ -5,6 +5,7 @@ from pathlib import Path
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('receiver', Path(__file__).with_name('receive.py'))
 receiver = importlib.util.module_from_spec(spec)
@@ -42,6 +43,24 @@ class ReceiverTests(unittest.TestCase):
     def test_rejects_wrong_revision(self):
         with tempfile.TemporaryDirectory() as directory, self.assertRaises(ValueError):
             receiver.unpack(archive(), Path(directory), 'b' * 40)
+
+    def test_rolls_back_on_failed_http_health_check(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            (base / 'releases').mkdir()
+            previous = base / 'releases' / 'previous'
+            previous.mkdir()
+            (base / 'current').symlink_to(previous)
+            with patch.object(receiver, 'BASE', base), \
+                    patch.dict(receiver.os.environ, {'SSH_ORIGINAL_COMMAND': 'deploy ' + SHA}), \
+                    patch.object(receiver, 'require_current_main'), \
+                    patch.object(receiver.sys, 'stdin') as stdin, \
+                    patch.object(receiver.urllib.request, 'urlopen', side_effect=OSError('offline')), \
+                    patch.object(receiver.time, 'sleep'):
+                stdin.buffer = io.BytesIO(archive())
+                with self.assertRaises(RuntimeError):
+                    receiver.main()
+            self.assertEqual((base / 'current').readlink(), previous)
 
 
 if __name__ == '__main__':

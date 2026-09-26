@@ -20,11 +20,12 @@ MAX_BYTES = 20 * 1024 * 1024
 
 def unpack(data, destination, commit):
     with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as archive:
-        members = archive.getmembers()
-        if len(members) > 2000 or sum(m.size for m in members) > 64 * 1024 * 1024:
-            raise ValueError('Archive too large')
         seen = set()
-        for member in members:
+        total = 0
+        for count, member in enumerate(archive, 1):
+            total += member.size
+            if count > 2000 or total > 64 * 1024 * 1024:
+                raise ValueError('Archive too large')
             name = PurePosixPath(member.name)
             if name.is_absolute() or '..' in name.parts or '\\' in member.name:
                 raise ValueError('Unsafe archive path')
@@ -57,18 +58,21 @@ def activate(release):
     temporary.replace(BASE / 'current')
 
 
+def require_current_main(commit):
+    with urllib.request.urlopen('https://api.github.com/repos/LudovicDespaux/wiki_influenceur/git/ref/heads/main', timeout=15) as response:
+        if json.load(response)['object']['sha'] != commit:
+            raise ValueError('Revision is not current main')
+
+
 def main():
     command = os.environ.get('SSH_ORIGINAL_COMMAND', '')
     match = re.fullmatch(r'deploy ([a-f0-9]{40})', command)
     if not match:
         raise ValueError('Only deploy <commit> is permitted')
     commit = match[1]
-    # Refuse a superseded or unmerged revision, including delayed workflows.
-    with urllib.request.urlopen('https://api.github.com/repos/LudovicDespaux/wiki_influenceur/git/ref/heads/main', timeout=15) as response:
-        if json.load(response)['object']['sha'] != commit:
-            raise ValueError('Revision is not current main')
     with (BASE / 'deploy.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
+        require_current_main(commit)
         data = sys.stdin.buffer.read(MAX_BYTES + 1)
         if len(data) > MAX_BYTES:
             raise ValueError('Upload too large')
@@ -76,6 +80,7 @@ def main():
         release.chmod(0o755)
         try:
             unpack(data, release, commit)
+            require_current_main(commit)
         except Exception:
             shutil.rmtree(release)
             raise
