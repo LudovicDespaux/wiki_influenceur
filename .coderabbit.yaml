@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: fr-FR
+reviews:
+  profile: assertive
+  request_changes_workflow: false
+  auto_review:
+    enabled: true
+    drafts: false
+  path_instructions:
+    - path: "deploy/**"
+      instructions: >-
+        Vérifier le retour arrière, les chemins de fichiers, les droits et
+        la préservation des services PostCompare et Palworld sur le même VPS.
+    - path: "**/*"
+      instructions: >-
+        Vérifier la sécurité, l'accessibilité et l'absence de secrets.
+        Le projet est un futur jeu de cartes de créateurs : ne pas présenter
+        des statistiques fictives comme des données réelles.
