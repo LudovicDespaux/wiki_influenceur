@@ -1,0 +1,59 @@
+name: Reusable static VPS deployment
+on:
+  workflow_call:
+    inputs:
+      host:
+        type: string
+        required: true
+      user:
+        type: string
+        required: true
+      public-url:
+        type: string
+        required: true
+      artifact-name:
+        type: string
+        default: site
+    secrets:
+      ssh-key:
+        required: true
+      known-hosts:
+        required: true
+permissions:
+  contents: read
+jobs:
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: production
+    concurrency:
+      group: production-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: dist
+      - name: Publish verified artifact
+        env:
+          DEPLOY_HOST: ${{ inputs.host }}
+          DEPLOY_USER: ${{ inputs.user }}
+          PUBLIC_URL: ${{ inputs.public-url }}
+          SSH_KEY: ${{ secrets.ssh-key }}
+          KNOWN_HOSTS: ${{ secrets.known-hosts }}
+        run: |
+          set -euo pipefail
+          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9.-]+$ && "$DEPLOY_HOST" != -* ]]
+          [[ "$DEPLOY_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]
+          key=$(mktemp)
+          hosts=$(mktemp)
+          trap 'rm -f "$key" "$hosts"' EXIT
+          chmod 600 "$key" "$hosts"
+          printf '%s\n' "$SSH_KEY" > "$key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$hosts"
+          tar -czf site.tar.gz -C dist .
+          ssh -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$hosts" -i "$key" \
+            "$DEPLOY_USER@$DEPLOY_HOST" "deploy $GITHUB_SHA" < site.tar.gz
+          curl --fail --silent --show-error --max-time 20 "${PUBLIC_URL%/}/version.json" | \
+            python3 -c 'import json,os,sys; assert json.load(sys.stdin)["commit"] == os.environ["GITHUB_SHA"]'

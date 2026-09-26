@@ -1,37 +1,54 @@
 # Wiki Influenceur
 
-Projet de jeu de cartes à collectionner autour des créateurs YouTube, Twitch et autres plateformes : boosters, raretés, collection, puis éventuellement échanges et combats. Nom provisoire.
+Futur jeu de cartes de créateurs YouTube/Twitch et autres plateformes. État actuel : page d'attente et infrastructure CI/CD ; le jeu reste à développer.
 
-## État actuel
+## Pipeline automatique
 
-Socle de publication et page d'attente uniquement. Aucun compte, tirage, paiement, collecte de statistiques ou image de créateur n'est encore implémenté. La stack du jeu reste à choisir.
+1. Branche et PR : build, tests du déploiement, ShellCheck et revue CodeRabbit.
+2. `main` exige une PR, les contrôles requis verts et les discussions résolues, sans contournement administrateur. Traiter les remarques avant fusion.
+3. Après fusion par squash, GitHub Actions construit et teste le commit de `main`, puis transfère cet artefact sur le VPS.
+4. Le serveur vérifie le SHA, active atomiquement la version et vérifie la réponse HTTP. Un échec restaure le lien précédent.
 
-## Développement et vérification
+La fusion reste explicite. Aucun déploiement depuis une PR. Adresse : http://91.134.138.53/wiki-influenceur/ ; `version.json` identifie le commit servi.
 
-Node 24 et Git. `npm ci`, puis `npm run build` produit `dist/`, avec le SHA dans `version.json`. La construction contrôle les références aux assets. Pour prévisualiser : `python3 -m http.server 5173 --directory dist`.
+## Local
 
-La CI GitHub lance le build, la validation Bash et ShellCheck. CodeRabbit est configuré pour des revues en français ; son application GitHub doit avoir accès à ce dépôt.
+Node 24 : `npm ci && npm run build`. Prévisualisation : `python3 -m http.server 5173 --directory dist`. Sous WSL : `python3 -m unittest discover -s deploy -p 'test_*.py'` et `shellcheck deploy/*.sh`.
 
-## Protection de main
+## Réutiliser pour un autre projet
 
-La règle GitHub active impose une PR, la CI `verify` verte sur une branche à jour et la résolution des discussions. Suppression et force-push sont interdits, sans exemption administrateur. Fusion par squash. Aucun second approbateur humain obligatoire pour ce dépôt individuel. La revue CodeRabbit est également exigée par le processus de livraison décrit dans AGENTS.md ; son activation est à vérifier dans les applications GitHub.
+`.github/workflows/ci.yml` accepte `workflow_call`, avec `node-version`, `java-version` et `verify-command`. Exemple React/Java :
 
-## Livraison
+```yaml
+name: CI
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  checks:
+    uses: LudovicDespaux/wiki_influenceur/.github/workflows/ci.yml@main
+    with:
+      node-version: '24'
+      java-version: '17'
+      verify-command: 'cd frontend && npm ci && npm run build && cd ../backend && mvn -B verify'
+```
 
-1. Créer une branche et une PR vers `main`.
-2. Attendre la CI et la revue CodeRabbit du dernier commit, traiter ses remarques et résoudre les discussions.
-3. Fusionner, puis synchroniser le dépôt local sur `main`.
-4. Depuis WSL Ubuntu-26.04 avec Node 24 et l'accès SSH existant : `bash deploy/deploy-vps.sh`.
-5. Vérifier la page et `version.json` sur <http://91.134.138.53/wiki-influenceur/>.
+Remplacer `@main` par un SHA validé pour figer la version. Le contrôle requis du dépôt appelant doit correspondre au nom réellement produit. CodeRabbit et les règles GitHub restent propres à chaque dépôt. Laisser `DEPLOY_ENABLED` absent pour utiliser seulement la CI.
 
-Comme PostCompare, le déploiement est une commande explicite après fusion, pas un déploiement automatique GitHub Actions. Aucune clé SSH n'est déposée dans GitHub.
+`.github/workflows/deploy-reusable.yml` accepte un artefact de site statique, un hôte, un utilisateur et une URL publique. Il reçoit une clé SSH dédiée et les clés d'hôte vérifiées. Un serveur Java comme PostCompare nécessitera un adaptateur de réception et de redémarrage systemd : ne pas envoyer son JAR au récepteur statique.
 
-Le script exige un arbre propre correspondant à `origin/main`, construit le site et conserve les versions dans `/opt/wiki-influenceur/releases`. Nginx sert le lien `current`. En cas d'échec de validation, la configuration et la version précédentes sont restaurées. Le script vérifie aussi PostCompare et Palworld.
+## Infrastructure
 
-Sans domaine, le site partage le serveur Nginx de PostCompare via un include dédié dans `/etc/nginx/sites-available/postcompare`. **Un futur déploiement PostCompare remplaçant ce fichier devra conserver cet include**, sinon la route disparaîtra ; relancer le déploiement de ce projet la rétablit. Ne pas exécuter les deux déploiements simultanément. Aucun port ni règle de pare-feu supplémentaire.
+Variables GitHub : `DEPLOY_ENABLED`, `DEPLOY_HOST`, `DEPLOY_USER`, `PUBLIC_URL`. Secrets : `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`. Environnement `production` limité à `main`.
 
-Adresse provisoire en HTTP, sans compte ni donnée utilisateur. Domaine et HTTPS à configurer ultérieurement.
+Le compte VPS `wiki-deploy` n'a pas de sudo. Sa clé est restreinte à `/usr/local/libexec/wiki-influenceur-receive.py`, installé et modifiable par root uniquement. Il accepte des fichiers statiques, refuse les liens et chemins sortant du dossier, et n'exécute jamais les fichiers reçus. Le récepteur vérifie que le commit est le `main` courant de ce dépôt. Pour un autre projet, adapter cette référence, l'URL et le dossier côté serveur, avec un compte et une clé distincts.
 
-## Suite du projet
+Versions : `/opt/wiki-influenceur/releases` ; lien actif : `current`. Les tests vérifient notamment le rejet des traversées de chemins, des liens symboliques et des SHA incohérents. La rétention des versions VPS reste manuelle ; les artefacts GitHub expirent après un jour.
 
-Définir les règles de boosters et raretés, les créateurs et plateformes couverts, les sources de données autorisées, puis développer la collection et la persistance. Les probabilités et données de démonstration devront être explicites.
+Le site partage temporairement le virtual host Nginx de PostCompare via `/etc/nginx/snippets/wiki-influenceur.conf`. Un déploiement PostCompare qui remplace son fichier Nginx doit conserver cet include. Domaine et HTTPS seront ajoutés ultérieurement.
+
+`deploy/deploy-vps.sh` et `activate-release.sh` constituent un secours administrateur explicite. Ils nécessitent l'accès SSH administrateur existant ; après usage, vérifier que `deploy.lock` appartient encore à `wiki-deploy`.
+
+## Gratuité
+
+Les runners standards GitHub sont gratuits pour les dépôts publics ; les dépôts privés ont des quotas. Aucun service payant supplémentaire souscrit. CodeRabbit dépend séparément des droits et de l'offre du compte.
