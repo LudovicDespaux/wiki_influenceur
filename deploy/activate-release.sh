@@ -9,6 +9,10 @@ base=/opt/wiki-influenceur
 host_config=/etc/nginx/sites-available/postcompare
 snippet=/etc/nginx/snippets/wiki-influenceur.conf
 install -d -m 755 "$base/releases"
+if [[ ! -e "$base/deploy.lock" ]]; then
+    # Create as the receiver user, without replacing an existing lock inode.
+    runuser -u wiki-deploy -- touch "$base/deploy.lock"
+fi
 exec 9>"$base/deploy.lock"
 flock -n 9
 [[ ! -e "$base/releases/$release" ]]
@@ -37,7 +41,11 @@ rollback() {
 }
 trap rollback ERR
 install -d -m 755 "$base/releases/$release"
-install -m 644 "$upload/site/"* "$base/releases/$release/"
+(
+    cd "$upload/site"
+    find . -type d -exec install -d -m 755 "$base/releases/$release/{}" \;
+    find . -type f -exec install -m 644 "{}" "$base/releases/$release/{}" \;
+)
 install -m 644 "$upload/location.conf" "$snippet"
 # Add only our include to the existing IP virtual host; preserve its other routes.
 python3 - "$host_config" <<'PY'

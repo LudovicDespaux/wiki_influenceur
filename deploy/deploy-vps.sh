@@ -12,7 +12,7 @@ release="$(date -u +%Y%m%dT%H%M%SZ)-${commit:0:12}"
 vps=ubuntu@91.134.138.53
 upload="/home/ubuntu/wiki-influenceur-upload/$release"
 ssh -o BatchMode=yes "$vps" "mkdir -p '$upload/site'"
-scp dist/index.html dist/style.css dist/version.json "$vps:$upload/site/"
+scp -r dist/. "$vps:$upload/site/"
 scp deploy/activate-release.sh deploy/location.conf "$vps:$upload/"
 ssh -o BatchMode=yes "$vps" "sudo -n bash '$upload/activate-release.sh' '$release' '$commit'"
 curl --fail --silent --show-error http://91.134.138.53/wiki-influenceur/version.json | grep -F "$commit"
