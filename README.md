@@ -25,6 +25,7 @@ on: [push, pull_request]
 permissions:
   contents: read
   pull-requests: read
+  statuses: read
 jobs:
   checks:
     uses: LudovicDespaux/wiki_influenceur/.github/workflows/ci.yml@main

@@ -16,9 +16,12 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  statuses: read
 jobs:
   verify:
     name: verify
+    permissions:
+      contents: read
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
@@ -59,4 +62,5 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      statuses: read
     uses: ./.github/workflows/review-reusable.yml
