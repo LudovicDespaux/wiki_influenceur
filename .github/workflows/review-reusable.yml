@@ -30,6 +30,14 @@ jobs:
               })
               with urllib.request.urlopen(request, timeout=20) as response:
                   return json.load(response)
+          def completed_status(statuses):
+              trusted = [s for s in statuses if s.get('context') == 'CodeRabbit'
+                         and (s.get('creator') or {}).get('login') == 'coderabbitai[bot]'
+                         and (s.get('creator') or {}).get('type') == 'Bot']
+              if not trusted:
+                  return False
+              latest = max(trusted, key=lambda s: s['id'])
+              return latest['state'] == 'success' and latest.get('description') == 'Review completed'
           for attempt in range(30):
               pr = get(f'repos/{repository}/pulls/{number}')
               if pr['head']['sha'] != sha:
@@ -50,6 +58,11 @@ jobs:
                   if latest['state'] == 'CHANGES_REQUESTED':
                       raise SystemExit('CodeRabbit requested changes; fix them and request another review.')
                   print('Completed CodeRabbit review: ' + latest['html_url'])
+                  break
+              # Clean reviews may only publish a commit status, not a PR review.
+              statuses = get(f'repos/{repository}/commits/{sha}/statuses?per_page=100')
+              if completed_status(statuses):
+                  print('CodeRabbit completed its review of ' + sha)
                   break
               print(f'Waiting for CodeRabbit on {sha}, attempt {attempt + 1}/30', flush=True)
               time.sleep(30)
