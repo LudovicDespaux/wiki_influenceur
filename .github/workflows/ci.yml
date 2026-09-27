@@ -1,0 +1,66 @@
+name: Verify
+on:
+  push:
+  pull_request:
+  workflow_call:
+    inputs:
+      node-version:
+        type: string
+        default: '24'
+      java-version:
+        type: string
+        default: ''
+      verify-command:
+        type: string
+        default: 'npm ci && npm run build && python3 -m unittest discover -s deploy -p "test_*.py" && bash -n deploy/deploy-vps.sh deploy/activate-release.sh && shellcheck deploy/*.sh'
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: read
+jobs:
+  verify:
+    name: verify
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: ${{ inputs.node-version || '24' }}
+      - if: inputs.java-version != ''
+        uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.java-version }}
+      - name: Build and tests
+        env:
+          VERIFY_COMMAND: ${{ inputs.verify-command || 'npm ci && npm run build && python3 -m unittest discover -s deploy -p "test_*.py" && bash -n deploy/deploy-vps.sh deploy/activate-release.sh && shellcheck deploy/*.sh' }}
+        run: bash -euo pipefail -c "$VERIFY_COMMAND"
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: site
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+  deploy:
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+    uses: ./.github/workflows/deploy-reusable.yml
+    with:
+      host: ${{ vars.DEPLOY_HOST }}
+      user: ${{ vars.DEPLOY_USER }}
+      public-url: ${{ vars.PUBLIC_URL }}
+    secrets:
+      ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      known-hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+  coderabbit:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: read
+    uses: ./.github/workflows/review-reusable.yml
